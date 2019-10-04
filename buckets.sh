@@ -2,8 +2,22 @@
 
 BUCKETNAME='dagint'
 
-REGIONS=( 'eu-north-1' 'ap-south-1' 'eu-west-3' 'eu-west-2' 'eu-west-1' 'ap-northeast-3' 'ap-northeast-2' 'ap-northeast-1' 'sa-east-1' 'ca-central-1' 'ap-southeast-1' 'ap-southeast-2' 'eu-central-1' 'us-east-1' 'us-east-2' 'us-west-1' 'us-west-2')
-
-for region in "${REGIONS[@]}"; do
-	aws s3 sync . "s3://$BUCKETNAME-$region" --exclude "*.sh" --acl public-read
+for region in `aws ec2 describe-regions --output text | cut -f3`; do
+	if [[ -z $(aws s3api head-bucket --bucket $BUCKETNAME-$region 2>&1) ]]; then
+        echo "$BUCKETNAME-$region - bucket exists"
+	else
+        echo "$BUCKETNAME-$region - bucket does not exist or permission is not there to view it.  Attempting to create bucket"
+		if [ $region == 'us-east-1' ]; then
+			aws s3api create-bucket --bucket $BUCKETNAME-$region --region $region 2>&1
+		else
+			aws s3api create-bucket --bucket $BUCKETNAME-$region --region $region --create-bucket-configuration LocationConstraint=$region 2>&1
+		fi
+		if [[ -z $(aws s3api head-bucket --bucket $BUCKETNAME-$region 2>&1) ]]; then
+			echo "$BUCKETNAME-$region - bucket exists"
+		else
+			echo "ERROR: Unable to create bucket: $BUCKETNAME-$region"
+		fi
+	fi
+	echo "Syncing files to S3 bucket: $BUCKETNAME-$region"
+	aws s3 sync ./s3syncfolder/ "s3://$BUCKETNAME-$region" --acl public-read
 done
